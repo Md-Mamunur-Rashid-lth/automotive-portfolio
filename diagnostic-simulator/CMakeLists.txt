@@ -15,4 +15,5 @@ include_directories(include)
 add_executable(diag_sim
     src/main.cpp
     src/dtc_state_machine.cpp
+    src/can_socket.cpp
 )
