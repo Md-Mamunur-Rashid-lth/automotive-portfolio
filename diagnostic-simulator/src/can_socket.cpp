@@ -75,8 +75,11 @@ CanSocket::~CanSocket() {
 bool CanSocket::send(uint32_t canId, const std::vector<uint8_t>& data) {
     if (!isOpen()) return false;
     if (data.size() > 8) {
-        std::cerr << "CAN frame payload too large (max 8 bytes)\n";
-        return false;
+        // ISO 15765-2 multi-frame transport not yet implemented.
+        // For now: truncate to 8 bytes so the response still goes out.
+        // In a real ECU this would use First Frame + Consecutive Frames.
+        std::vector<uint8_t> truncated(data.begin(), data.begin() + 8);
+        return send(canId, truncated);
     }
 
     struct can_frame frame;
