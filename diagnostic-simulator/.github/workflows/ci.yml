@@ -1,0 +1,45 @@
+name: CI
+
+# Run on every push and every pull request to main
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Install build tools and Google Test
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ \
+            cmake \
+            libgtest-dev \
+            can-utils
+
+      # Step 3: Configure the build with cmake
+      - name: Configure cmake
+        run: cmake -B build -S .
+        working-directory: diagnostic-simulator
+
+      # Step 4: Build everything (simulator + tests)
+      - name: Build
+        run: cmake --build build --parallel
+        working-directory: diagnostic-simulator
+
+      # Step 5: Run all tests
+      # Note: vcan0 is not available in GitHub CI runners,
+      # so CanSocket tests are unit-tested with mocks.
+      # UDS logic tests run fine without hardware.
+      - name: Run tests
+        run: ctest --output-on-failure
+        working-directory: diagnostic-simulator/build

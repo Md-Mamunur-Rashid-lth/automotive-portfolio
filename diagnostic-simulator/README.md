@@ -13,5 +13,5 @@ extension to this simulator.
 ### QNX portability
 The SocketCAN interface (`can_socket.cpp`) uses Linux-specific headers.
 All OS-specific code is isolated behind the `CanSocket` class.
-Porting to QNX would require replacing only that class with a QNX
+Porting to QNX would require replacing only that class with a   27T8YHUY7654
 `io-pkt` equivalent — all higher layers are POSIX-clean.

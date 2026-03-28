@@ -49,7 +49,7 @@ public:
     void setStateChangeCallback(StateChangeCallback cb);
 
 private:
-    uint32_t             m_dtcCode;               // e.g. 0x123456
+    uint32_t             m_dtcCode;               // like: 0x123456
     DtcState             m_state;                 // current state
     uint8_t              m_faultCounter;           // how many faults seen
     uint8_t              m_confirmationThreshold;  // how many needed to confirm
