@@ -54,6 +54,13 @@ CanSocket::CanSocket(const std::string& interfaceName)
         m_socketFd = -1;
         return;
     }
+    
+    // Timeout so the server loop wakes up and can check m_running
+    struct timeval tv;
+    tv.tv_sec  = 1;
+    tv.tv_usec = 0;
+    setsockopt(m_socketFd, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char*>(&tv), sizeof(tv));
 
     std::cout << "[CanSocket] Opened " << interfaceName << "\n";
 }
@@ -94,8 +101,13 @@ bool CanSocket::receive(uint32_t& outCanId, std::vector<uint8_t>& outData) {
 
     // read() blocks here until a frame arrives on the bus
     ssize_t bytesRead = read(m_socketFd, &frame, sizeof(frame));
-    if (bytesRead != sizeof(frame)) {
-        std::cerr << "Failed to receive CAN frame: " << strerror(errno) << "\n";
+    if (bytesRead != static_cast<ssize_t>(sizeof(frame))) {
+        // EAGAIN/EWOULDBLOCK = timeout expired, not a real error
+        // This is expected — it lets the caller check m_running
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cerr << "Failed to receive CAN frame: "
+                      << strerror(errno) << "\n";
+        }
         return false;
     }
 
