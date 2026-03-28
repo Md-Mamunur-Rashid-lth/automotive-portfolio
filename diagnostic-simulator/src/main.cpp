@@ -1,67 +1,71 @@
 #include <iostream>
 #include <iomanip>
+#include <memory>
+#include <vector>
 #include <thread>
 #include <chrono>
+#include <csignal>
+#include "uds_server.h"
 #include "dtc_state_machine.h"
-#include "can_socket.h"
 
-void printFrame(uint32_t id, const std::vector<uint8_t>& data) {
-    std::cout << "  CAN ID: 0x" << std::hex << std::uppercase
-              << std::setw(3) << std::setfill('0') << id
-              << "  Data: ";
-    for (auto b : data) {
-        std::cout << std::setw(2) << std::setfill('0')
-                  << (int)b << " ";
-    }
-    std::cout << std::dec << "\n";
+// Global pointer so our signal handler can stop the server cleanly
+// (signal handlers can only access global state)
+diag::UdsServer* g_server = nullptr;
+
+void signalHandler(int) {
+    std::cout << "\nShutting down...\n";
+    if (g_server) g_server->stop();
 }
 
 int main() {
-    std::cout << "=== Diagnostic Simulator ===\n\n";
+    std::cout << "==============================================\n";
+    std::cout << "  Automotive Diagnostic Simulator\n";
+    std::cout << "  UDS over virtual CAN (vcan0)\n";
+    std::cout << "==============================================\n\n";
 
-    // --- Part 1: DTC state machine demo ---
-    std::cout << "--- DTC State Machine ---\n";
-    diag::DtcStateMachine dtc(0x123456, 2);
-    dtc.setStateChangeCallback([](uint32_t code,
-                                   diag::DtcState from,
-                                   diag::DtcState to) {
-        std::cout << "  [DTC EVENT] 0x" << std::hex << code << std::dec
+    // Create some DTCs our ECU can report
+    // These represent faults the ECU monitors
+    auto dtc1 = std::make_shared<diag::DtcStateMachine>(0x123456, 2);
+    auto dtc2 = std::make_shared<diag::DtcStateMachine>(0xABCDEF, 2);
+    auto dtc3 = std::make_shared<diag::DtcStateMachine>(0x001234, 2);
+
+    // Register callbacks so we can see DTC state changes
+    auto dtcLogger = [](uint32_t code,
+                        diag::DtcState from,
+                        diag::DtcState to) {
+        std::cout << "[DTC] 0x" << std::hex << std::uppercase << code
                   << ": " << diag::dtcStateToString(from)
-                  << " -> " << diag::dtcStateToString(to) << "\n";
+                  << " -> " << diag::dtcStateToString(to)
+                  << std::dec << "\n";
+    };
+    dtc1->setStateChangeCallback(dtcLogger);
+    dtc2->setStateChangeCallback(dtcLogger);
+    dtc3->setStateChangeCallback(dtcLogger);
+
+    // Inject a fault on DTC1 at startup so we have something to show
+    dtc1->reportFault();
+    dtc1->reportFault();  // confirmed
+
+    // Create the UDS server
+    diag::UdsServer server("vcan0", {dtc1, dtc2, dtc3});
+    g_server = &server;
+
+    // Pretty log output
+    server.setLogCallback([](const std::string& msg) {
+        std::cout << msg << "\n";
     });
-    dtc.reportFault();
-    dtc.reportFault(); // confirmed
-    std::cout << "  Final DTC state: "
-              << diag::dtcStateToString(dtc.getState()) << "\n\n";
 
-    // --- Part 2: CAN socket demo ---
-    std::cout << "--- CAN Socket (vcan0) ---\n";
-    diag::CanSocket sock("vcan0");
+    // Handle Ctrl+C gracefully
+    std::signal(SIGINT, signalHandler);
 
-    if (!sock.isOpen()) {
-        std::cerr << "Could not open vcan0. Did you run:\n"
-                  << "  sudo modprobe vcan\n"
-                  << "  sudo ip link add dev vcan0 type vcan\n"
-                  << "  sudo ip link set up vcan0\n";
-        return 1;
-    }
+    std::cout << "Tip: In another terminal, try these commands:\n";
+    std::cout << "  candump vcan0\n";
+    std::cout << "  cansend vcan0 7DF#0222F190AAAAAAAAA   (read VIN)\n";
+    std::cout << "  cansend vcan0 7DF#0219020FAAAAAAAAA   (read DTCs)\n";
+    std::cout << "  cansend vcan0 7DF#0414FFFFFFAAAAAA    (clear DTCs)\n";
+    std::cout << "Press Ctrl+C to stop.\n\n";
 
-    // Send a UDS "ReadDataByIdentifier" request
-    // 0x7DF = OBD-II functional broadcast address
-    // 02 22 F1 90 = UDS: length=2, service=0x22, DID=0xF190 (VIN request)
-    std::vector<uint8_t> udsRequest = {0x02, 0x22, 0xF1, 0x90,
-                                        0xAA, 0xAA, 0xAA, 0xAA};
-    std::cout << "Sending UDS ReadDataByIdentifier (DID 0xF190 = VIN):\n";
-    sock.send(0x7DF, udsRequest);
-    printFrame(0x7DF, udsRequest);
+    server.run();  // blocks until stop() is called
 
-    // Receive our own frame back (we hear our own transmissions on vcan0)
-    uint32_t rxId;
-    std::vector<uint8_t> rxData;
-    std::cout << "Received back:\n";
-    sock.receive(rxId, rxData);
-    printFrame(rxId, rxData);
-
-    std::cout << "\nDone.\n";
     return 0;
 }

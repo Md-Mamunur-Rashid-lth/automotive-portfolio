@@ -16,4 +16,6 @@ add_executable(diag_sim
     src/main.cpp
     src/dtc_state_machine.cpp
     src/can_socket.cpp
+    src/did_store.cpp
+    src/uds_server.cpp
 )
